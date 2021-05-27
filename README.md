@@ -89,9 +89,9 @@ The Delayed Job Execution Plugin performs the following as part of the `:perform
 
 ### Synchronous? Seriously?
 
-Yes, this is not an ommission or a limitation! By ensuring the worker synchronously manages the execution in AWS Batch it ensures that its timing behaviour remains the same as when it was executing the job itself. This reduces the chance of unintended side-effects around how Delayed Job schedules, locks, and retries jobs.
+Yes, this is not an ommission or a limitation! By ensuring the worker synchronously manages the execution in AWS Batch it ensures that its timing behaviour remains the same as when it was executing the job itself. This reduces the chance of unintended side-effects around how Delayed Job schedules, locks, and retries jobs. While it is tempting to consider how decoupling might make this solution more flexible, it is important to keep in mind that this is a solution to running jobs that already exist within the Delayed Jobs queuing system -- introducing a decoupled queue inside is unlikely to improve anyone's day.
 
-While there are recognisable benefits to decoupling this solution, it introduces complexity that is undesirable here. Those motivated are welcome to accommodate that additional complexity but I have things to do.
+While there are recognisable benefits to decoupling, it introduces complexity that is undesirable here. Those motivated are welcome to accommodate that additional complexity but I have things to do.
 
 ### AWS
 
