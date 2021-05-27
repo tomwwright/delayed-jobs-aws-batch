@@ -1,0 +1,14 @@
+#!/usr/bin/env ruby
+
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'config', 'environment'))
+
+Delayed::Worker.logger = Logger.new(STDOUT)
+
+job_id = ARGV[0]
+Delayed::Worker.logger.info("Executing specific Delayed Job with ID: " + job_id)
+
+job = Delayed::Job.find(job_id)
+Delayed::Worker.logger.info(job)
+Delayed::Worker.new.run(job)
+
+Delayed::Worker.logger.info("Complete")

@@ -1,0 +1,12 @@
+#!/usr/bin/env ruby
+
+require File.expand_path(File.join(File.dirname(__FILE__), '..', 'config', 'environment'))
+require 'delayed/command'
+require_relative 'aws_batch_execution_plugin'
+
+# suppress not found errors from MongoDB
+Mongoid.raise_not_found_error = false
+
+Delayed::Worker.logger = Logger.new(STDOUT)
+Delayed::Worker.plugins << AwsBatchExecutionPlugin
+Delayed::Worker.new().start
