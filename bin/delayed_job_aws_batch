@@ -2,7 +2,7 @@
 
 require File.expand_path(File.join(File.dirname(__FILE__), '..', 'config', 'environment'))
 require 'delayed/command'
-require_relative 'aws_batch_execution_plugin'
+require_relative '../lib/aws_batch_execution_plugin'
 
 # suppress not found errors from MongoDB
 Mongoid.raise_not_found_error = false
