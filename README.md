@@ -22,16 +22,16 @@ The motivation of this proof-of-concept are:
 ![Infrastructure Diagram](./doc/infrastructure.png)
 
 1. Rails application is packaged and pushed to an ECR Repository. This image will be used for the other Fargate-based components of the solution.
-2. Fargate service runs the Delayed Job worker but with the AWS Batch plugin applied.
+2. Fargate service runs a Delayed Job worker but with the AWS Batch plugin applied:
    ```
    # task uses the following as command
 
    bin/delayed_job_aws_batch
    ```
-   This Delayed Job worker picks up Delayed Job jobs from the collection in MongoDB as per normal, but the worker behaviour for the job is overriden.
+   This Delayed Job worker picks up Delayed Job jobs from the collection in MongoDB as per normal, but the worker behaviour for the job is overriden as per (3) below.
 3. The Delayed Job worker, instead of performing job as normal, submits a job to AWS Batch with the Job ID. It then simply polls the status of the AWS Batch job until it completes.
 
-   It also inserts a marker item into a collection in MongoDB that simply correlates the Delayed Job ID and the AWS Batch Job ID. This is used to protect against duplicating a running job on AWS Batch if the Delayed Job worker restarts.
+   It also inserts a marker item into a collection in MongoDB that simply correlates the Delayed Job ID and the AWS Batch Job ID. This is used to protect against duplicating a running job on AWS Batch if the Delayed Job worker restarts and picks up the same job.
 4. AWS Batch executes the job via Fargate, using the same container image. This job executes with a different command that executes Delayed Job against the provided Job ID:
    ```
    bin/run_delayed_job <JobID>
