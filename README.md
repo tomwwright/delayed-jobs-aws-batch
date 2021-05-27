@@ -93,6 +93,10 @@ Yes, this is not an ommission or a limitation! By ensuring the worker synchronou
 
 While there are recognisable benefits to decoupling this solution, it introduces complexity that is undesirable here. Those motivated are welcome to accommodate that additional complexity but I have things to do.
 
+### AWS
+
+Description of required AWS infrastructure TBC
+
 ## Setup
 
 ### MongoDB
@@ -167,6 +171,13 @@ Run the Delayed Job in AWS Batch worker
 
 ```
 bin/delayed_job_aws_batch
+```
+
+Enqueue a Delayed Job in the Rails console
+
+```
+> require_relative "app/jobs/dummy_job"
+> Delayed::Job.enqueue DummyJob.new("Hello AWS Batch!)
 ```
 
 ### Docker
