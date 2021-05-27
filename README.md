@@ -11,17 +11,20 @@ Sourced from https://github.com/mongoid/mongoid-demo
 
 ## Dejayed Job in AWS Batch
 
-This repository has had Delayed Job added for the purposes of a proof-of-concept around offloading execution of the Delayed Job itself to AWS Batch.
+This repository has had Delayed Job added for the purposes of a proof-of-concept around offloading execution of the Delayed Job itself to AWS Batch. The general idea is that instead of the Delayed Job worker both selecting and executing the job, the worker just selects a job and submits the execution to AWS Batch. The worker synchronously waits for the execution to complete and then continues.
 
 The motivation of this proof-of-concept are:
 
-- a compute environment for the job that is separate to the worker -- to safely run idempotent or interruptible jobs without needing to protect the worker process itself
-- control over the compute environment for the job
+- decouple the compute environment for the job from the worker itself
+  - this protects non-idempotent, non-interruptible jobs without needing to protect the worker process itself
+  - the worker process can be restarted, redeployed, etc. because it has an idempotent wrapper around the job _actually_ running in AWS Batch
+- control over the compute environment for the job -- jobs could be extended to specify memory and compute requirements as needed
 - avoid code changes to an existing Delayed Job code base in regards to the job code itself or the calling code that schedules the jobs
 
 ![Infrastructure Diagram](./doc/infrastructure.png)
 
 1. Rails application is packaged and pushed to an ECR Repository. This image will be used for the other Fargate-based components of the solution.
+
 2. Fargate service runs a Delayed Job worker but with the AWS Batch plugin applied:
    ```
    # task uses the following as command
@@ -29,9 +32,11 @@ The motivation of this proof-of-concept are:
    bin/delayed_job_aws_batch
    ```
    This Delayed Job worker picks up Delayed Job jobs from the collection in MongoDB as per normal, but the worker behaviour for the job is overriden as per (3) below.
+
 3. The Delayed Job worker, instead of performing job as normal, submits a job to AWS Batch with the Job ID. It then simply polls the status of the AWS Batch job until it completes.
 
    It also inserts a marker item into a collection in MongoDB that simply correlates the Delayed Job ID and the AWS Batch Job ID. This is used to protect against duplicating a running job on AWS Batch if the Delayed Job worker restarts and picks up the same job.
+
 4. AWS Batch executes the job via Fargate, using the same container image. This job executes with a different command that executes Delayed Job against the provided Job ID:
    ```
    bin/run_delayed_job <JobID>
@@ -40,7 +45,7 @@ The motivation of this proof-of-concept are:
 
 ### Important Files
 
-Most of this repository is example code generated simply to have a running Rails + MongoDB application to work with. This table lists the important files. I don't right Ruby, don't shoot me for the mess.
+Most of this repository is example code generated simply to have a running Rails + MongoDB application to work with. This table lists the important files. I don't write Ruby, don't shoot me for the mess.
 
 | File                | Description |
 | ------------------- | ----------- |
@@ -67,7 +72,8 @@ The Delayed Job Execution Plugin performs the following as part of the `:perform
 
 1. looks for an `AWSBatchJob` record in the database that matches the job
    
-   _(if found, the worker knows this job is already executing in AWS Batch and it should just poll that job instead of submitting a new one -- i.e. idempotency)_
+   _(if found, the worker knows this job is already executing in AWS Batch and it should just poll that job instead of submitting a new one -- i.e. the worker is idempotent)_
+
 2. if there was not a matching record, then:
     1. submit a job to AWS Batch for this Delayed Job ID
     1. create and save an `AWSBatchJob` record with the Delayed Job ID and the AWS Batch Job ID
@@ -75,9 +81,17 @@ The Delayed Job Execution Plugin performs the following as part of the `:perform
 
    _(the worker polls and waits here to maintain synchronicity of the worker process. Even though the job is running on AWS Batch and technically the worker could move on, it mimics how the worker would operate without the plugin to avoid unexpected side effects)_
 
-4. do NOT execute the block provided as part of the lifecycle event -- this means the worker does not execute `run(job)`
+4. delete the `AWSBatchJob` record to reflect the AWS Batch job is done
+
+5. do NOT execute the block provided as part of the lifecycle event -- this means the worker does not execute `run(job)`
    
    _(the worker does not execute `run(job)` because that is what is submitted to AWS Batch to be run by `bin/run_delayed_job`)_
+
+### Synchronous? Seriously?
+
+Yes, this is not an ommission or a limitation! By ensuring the worker synchronously manages the execution in AWS Batch it ensures that its behaviour remains the same was when it was executing the job itself. This reduces the chance of unintended side-effects around how Delayed Job schedules, locks, and retries jobs.
+
+While there are recognisable benefits to decoupling this solution, it introduces complexity that is undesirable here. Those motivated are welcome to accommodate that additional complexity but I have things to do.
 
 ## Setup
 
