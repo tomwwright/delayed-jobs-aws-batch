@@ -38,6 +38,47 @@ The motivation of this proof-of-concept are:
    ```
 5. Delayed Job execution handles running job as per normal. Being within the Delayed Job execution context, success and failure are appropriately handled: i.e. successful jobs are deleted, failed jobs are rescheduled as per `max_attempts` configuration, etc.
 
+### Important Files
+
+Most of this repository is example code generated simply to have a running Rails + MongoDB application to work with. This table lists the important files. I don't right Ruby, don't shoot me for the mess.
+
+| File                | Description |
+| ------------------- | ----------- |
+| [dummy_job.rb](./app/jobs/dummy_job.rb) | Provides a simple job that can be scheduled that echoes the provided string |
+| [dummy_error_job.rb](./app/jobs/dummy_job.rb) | Provides a simple job that can be scheduled that raises an exception, for the purposes of testing failure behaviour |
+| [aws_batch_job.rb](./lib/aws_batch_job.rb) | Class for storing transient state in MongoDB to map Delayed Job ID to AWS Batch Job ID. This allows for idempotency in the worker for in-flight jobs if the worker restarts |
+| [aws_batch_execution_plugin.rb](./lib/aws_batch_execution_plugin.rb) | Delayed Job Plugin that wraps the `:perform:` lifecycle event of the worker. See [more information](#aws-batch-execution-plugin) below | 
+| [delayed_job_aws_batch](./bin/delayed_job_aws_batch) | Ruby script that serves to run the Delayed Job worker loop but with the AWS Batch Execution Plugin applied |
+| [run_delayed_job](./bin/run_delayed_job) | Ruby script that serves to run Delayed Job against a single provided Delayed Job ID |
+
+### AWS Batch Execution Plugin
+
+The AWS Batch Execution Plugin leverages a Delayed Job Plugin to wrap the `:perform` lifecycle event of the Delayed Job worker so that smoke and mirrors can be applied.
+
+The context of the `:perform` lifecycle event is [here](https://github.com/collectiveidea/delayed_job/blob/master/lib/delayed/worker.rb#L312). It executes around the Delayed Job worker executing `run(job)` which:
+
+1. is just after the worker reserves the job -- thus worker running the AWS Batch Execution plugin is the worker that actually is seen in the `locked_by`  of the Delayed Job.
+2. `run(job)` handles:
+    1. executing the job itself
+    1. handling success of the job, i.e. deleting the job record from the database
+    1. handling failurs of the job, i.e. rescheduling the job if it has attempts left, updating the job or deleting it if it has failed completely
+
+The Delayed Job Execution Plugin performs the following as part of the `:perform` lifecycle:
+
+1. looks for an `AWSBatchJob` record in the database that matches the job
+   
+   _(if found, the worker knows this job is already executing in AWS Batch and it should just poll that job instead of submitting a new one -- i.e. idempotency)_
+2. if there was not a matching record, then:
+    1. submit a job to AWS Batch for this Delayed Job ID
+    1. create and save an `AWSBatchJob` record with the Delayed Job ID and the AWS Batch Job ID
+3. poll the AWS Batch Job and wait for it to complete
+
+   _(the worker polls and waits here to maintain synchronicity of the worker process. Even though the job is running on AWS Batch and technically the worker could move on, it mimics how the worker would operate without the plugin to avoid unexpected side effects)_
+
+4. do NOT execute the block provided as part of the lifecycle event -- this means the worker does not execute `run(job)`
+   
+   _(the worker does not execute `run(job)` because that is what is submitted to AWS Batch to be run by `bin/run_delayed_job`)_
+
 ## Setup
 
 ### MongoDB
